@@ -10,29 +10,32 @@ internal static class StringExtensions
         public string SubstringUntil(
             string sub,
             StringComparison comparison = StringComparison.Ordinal
-        )
-        {
-            var index = str.IndexOf(sub, comparison);
-            return index < 0 ? str : str[..index];
-        }
+        ) =>
+            str.IndexOf(sub, comparison) switch
+            {
+                >= 0 and var index => str[..index],
+                _ => str,
+            };
 
         public string SubstringUntilLast(
             string sub,
             StringComparison comparison = StringComparison.Ordinal
-        )
-        {
-            var index = str.LastIndexOf(sub, comparison);
-            return index < 0 ? str : str[..index];
-        }
+        ) =>
+            str.LastIndexOf(sub, comparison) switch
+            {
+                >= 0 and var index => str[..index],
+                _ => str,
+            };
 
         public string SubstringAfterLast(
             string sub,
             StringComparison comparison = StringComparison.Ordinal
-        )
-        {
-            var index = str.LastIndexOf(sub, comparison);
-            return index < 0 ? "" : str[(index + sub.Length)..];
-        }
+        ) =>
+            str.LastIndexOf(sub, comparison) switch
+            {
+                >= 0 and var index => str[(index + sub.Length)..],
+                _ => "",
+            };
     }
 
     extension(StringBuilder builder)

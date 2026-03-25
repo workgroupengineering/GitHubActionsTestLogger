@@ -63,10 +63,12 @@ internal static class MtpExtensions
             if (string.IsNullOrWhiteSpace(testMethodFullyQualifiedName))
                 return null;
 
-            var testMethodName = testMethodFullyQualifiedName.SubstringAfterLast(
-                ".",
-                StringComparison.OrdinalIgnoreCase
-            );
+            var testMethodName = testMethodFullyQualifiedName.Contains('.')
+                ? testMethodFullyQualifiedName.SubstringAfterLast(
+                    ".",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                : testMethodFullyQualifiedName;
 
             return test.TryGetException()
                 ?.StackTrace?.Pipe(StackFrame.ParseMany)
