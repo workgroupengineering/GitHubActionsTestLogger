@@ -1,5 +1,4 @@
 <Project>
-
   <PropertyGroup>
     <Version>0.0.0-dev</Version>
     <Company>Tyrrrz</Company>
@@ -10,7 +9,6 @@
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
     <IsPackable>false</IsPackable>
-    <AssemblyOriginatorKeyFile>$(MSBuildThisFileDirectory)GitHubActionsTestLogger.snk</AssemblyOriginatorKeyFile>
   </PropertyGroup>
 
   <!-- Disable nullability warnings on older frameworks because there is no nullability info for BCL -->
@@ -32,5 +30,4 @@
     <PackageReleaseNotes>https://github.com/Tyrrrz/GitHubActionsTestLogger/releases</PackageReleaseNotes>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
-
 </Project>
