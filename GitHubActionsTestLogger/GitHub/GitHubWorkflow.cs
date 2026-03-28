@@ -67,6 +67,9 @@ internal partial class GitHubWorkflow(TextWriter commandWriter, TextWriter summa
         await InvokeCommandAsync(kind.ToString().ToLowerInvariant(), message, options);
     }
 
+    public async Task CreateWarningAnnotationAsync(string title, string message) =>
+        await CreateAnnotationAsync(GitHubAnnotationKind.Warning, title, message);
+
     public async Task CreateErrorAnnotationAsync(
         string title,
         string message,
@@ -83,16 +86,11 @@ internal partial class GitHubWorkflow(TextWriter commandWriter, TextWriter summa
             column
         );
 
-    public async Task CreateWarningAnnotationAsync(string title, string message) =>
-        await CreateAnnotationAsync(GitHubAnnotationKind.Warning, title, message);
-
-    public async Task CreateSummaryAsync(string content)
+    private string TruncateSummary(string content)
     {
-        // Try to extract the underlying file path from the summary writer to monitor file size.
-        // This works when the writer wraps a ContentionTolerantWriteFileStream (production)
-        // or a plain FileStream (tests).
-        var detectedFilePath = summaryWriter is StreamWriter sw
-            ? sw.BaseStream switch
+        // Try to extract the underlying file path from the summary writer to monitor file size
+        var filePath = summaryWriter is StreamWriter writer
+            ? writer.BaseStream switch
             {
                 ContentionTolerantWriteFileStream cts => cts.FilePath,
                 FileStream fs => fs.Name,
@@ -100,73 +98,53 @@ internal partial class GitHubWorkflow(TextWriter commandWriter, TextWriter summa
             }
             : null;
 
-        if (!string.IsNullOrWhiteSpace(detectedFilePath))
+        if (string.IsNullOrWhiteSpace(filePath))
+            return content;
+
+        var existingSize = File.Exists(filePath) ? new FileInfo(filePath).Length : 0L;
+
+        // Calculate required size for the summary content
+        var contentSize = Encoding.UTF8.GetByteCount(content);
+        var newLineSize = Encoding.UTF8.GetByteCount(Environment.NewLine);
+        var requiredSize = contentSize + newLineSize * 3;
+
+        if (existingSize + requiredSize > GitHubEnvironment.SummaryFileSizeLimit)
         {
-            var existingSize = File.Exists(detectedFilePath)
-                ? new FileInfo(detectedFilePath).Length
-                : 0L;
-
-            var newlineSize = Encoding.UTF8.GetByteCount(Environment.NewLine);
-            var contentSize = Encoding.UTF8.GetByteCount(content);
-
-            // Two leading newlines + content + trailing newline
-            var totalToWrite = newlineSize * 3 + contentSize;
-
-            if (existingSize + totalToWrite > GitHubEnvironment.SummaryFileSizeLimit)
-            {
-                var availableSizeLong =
-                    GitHubEnvironment.SummaryFileSizeLimit - existingSize - newlineSize * 3L;
-
-                string? truncated = null;
-
-                if (availableSizeLong > 0)
-                {
-                    var availableSize = (int)Math.Min(availableSizeLong, int.MaxValue);
-                    var bytes = Encoding.UTF8.GetBytes(content);
-                    if (bytes.Length > availableSize)
-                    {
-                        // Trim back to a valid UTF-8 character boundary
-                        var count = availableSize;
-                        while (count > 0 && (bytes[count] & 0xC0) == 0x80)
-                            count--;
-
-                        if (count > 0)
-                            truncated = Encoding.UTF8.GetString(bytes, 0, count);
-                    }
-                    else
-                    {
-                        truncated = content;
-                    }
-                }
-
-                if (string.IsNullOrWhiteSpace(truncated))
-                {
-                    // Can't produce a legible summary — skip writing entirely
-                    await CreateWarningAnnotationAsync(
-                        "GitHub Actions Test Logger",
-                        "The test summary was omitted because it exceeded GitHub's step summary size limit (1 MiB). "
-                            + "To reduce the summary size, consider disabling passed or skipped test reporting."
-                            + (
-                                existingSize > 0
-                                    ? " The summary file is shared with other test steps — consider splitting them into separate jobs."
-                                    : ""
-                            )
-                    );
-                    return;
-                }
-
-                await CreateWarningAnnotationAsync(
-                    "GitHub Actions Test Logger",
-                    "The test summary was truncated because it exceeded GitHub's step summary size limit (1 MiB). "
-                        + "To reduce the summary size, consider disabling passed or skipped test reporting."
-                        + (
-                            existingSize > 0
-                                ? " The summary file is shared with other test steps — consider splitting them into separate jobs."
-                                : ""
-                        )
+            var availableSize = (int)
+                Math.Min(
+                    GitHubEnvironment.SummaryFileSizeLimit - existingSize - newLineSize * 3L,
+                    int.MaxValue
                 );
-                content = truncated;
-            }
+
+            return
+                // There is enough space to fit the whole content
+                availableSize > 0
+                && requiredSize <= availableSize
+                    ? content
+                // There is enough space to fit some of the content
+                : availableSize > 0 && requiredSize > availableSize ? content[..availableSize]
+                // There is no space at all
+                : string.Empty;
+        }
+
+        return content;
+    }
+
+    public async Task CreateSummaryAsync(string content)
+    {
+        // Truncate summary to fit into GitHub's step summary size limit
+        var truncated = TruncateSummary(content);
+        if (truncated.Length < content.Length)
+        {
+            await CreateWarningAnnotationAsync(
+                "Test summary truncated",
+                """
+                The test summary was truncated or completely omitted because it exceeded GitHub's size limit of 1 MiB.
+
+                To reduce the summary size, consider disabling reporting of passed and skipped tests, if enabled.
+                If you have multiple summary providers in the same step (e.g. running multiple test suites), consider splitting them into separate steps to avoid sharing the same summary output.
+                """
+            );
         }
 
         // If the summary file already contains HTML content, we need to first add two newlines
