@@ -16,6 +16,8 @@ internal class ContentionTolerantWriteFileStream(string filePath, FileMode fileM
 
     private readonly List<byte> _buffer = new(1024);
 
+    public string FilePath { get; } = filePath;
+
     [ExcludeFromCodeCoverage]
     public override bool CanRead => false;
 
@@ -38,7 +40,7 @@ internal class ContentionTolerantWriteFileStream(string filePath, FileMode fileM
         {
             try
             {
-                return new FileStream(filePath, fileMode);
+                return new FileStream(FilePath, fileMode);
             }
             catch (IOException) when (retriesRemaining > 0)
             {
